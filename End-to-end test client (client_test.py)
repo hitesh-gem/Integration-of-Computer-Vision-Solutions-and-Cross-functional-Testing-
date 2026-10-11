@@ -1,0 +1,62 @@
+
+import cv2
+import numpy as np
+import requests
+
+URL = "http://127.0.0.1:8000/inspect-item"
+
+
+def run_integration_test():
+    # Black background with a synthetic bright region.
+    image = np.zeros((300, 300, 3), dtype=np.uint8)
+
+    cv2.rectangle(
+        image,
+        (50, 50),
+        (100, 100),
+        (255, 255, 255),
+        thickness=-1,
+    )
+
+    success, encoded = cv2.imencode(".png", image)
+    assert success, "Image encoding failed"
+
+    files = {
+        "file": (
+            "test_product.png",
+            encoded.tobytes(),
+            "image/png",
+        )
+    }
+
+    print("[INFO] Sending image to CV API...")
+
+    try:
+        response = requests.post(
+            URL,
+            files=files,
+            timeout=15,
+        )
+
+        print("HTTP status:", response.status_code)
+        response.raise_for_status()
+
+        result = response.json()
+        print("Response:", result)
+
+        # Assertions for this specific synthetic image.
+        assert result["status"] == "REJECT"
+        assert result["defects_detected"] >= 1
+        assert len(result["bounding_boxes"]) >= 1
+        assert result["confidence"] is None
+
+        print("[PASS] End-to-end integration test passed.")
+
+    except requests.RequestException as exc:
+        print("[FAIL] API request failed:", exc)
+        raise
+    except AssertionError as exc:
+        print("[FAIL] Unexpected API result:", exc)
+        raise
+
+
